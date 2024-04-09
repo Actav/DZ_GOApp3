@@ -2,7 +2,10 @@ package linkgrpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/streadway/amqp"
+	"gitlab.com/robotomize/gb-golang/homework/03-03-umanager/internal/link"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -77,16 +80,28 @@ func (h Handler) CreateLink(ctx context.Context, request *pb.CreateLinkRequest) 
 		if errors.Is(err, database.ErrConflict) {
 			return nil, status.Error(codes.AlreadyExists, err.Error())
 		}
+
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	// Сообщение которое отправляем в очередь
-	type message struct {
-		ID string `json:"id"`
+	// Сообщение, которое отправляем в очередь
+	msg := link.Message{
+		ID: objectID.Hex(),
 	}
 
-	// implement me
-	// h.pub.Publish()
+	jsonMsg, err := json.Marshal(msg)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if err = h.pub.Publish(
+		"", link.QueueName, false, false, amqp.Publishing{
+			ContentType: "application/json",
+			Body:        jsonMsg,
+		},
+	); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
 
 	return &pb.Empty{}, nil
 }
